@@ -85,7 +85,15 @@
         .comments-box { margin-top: 15px; display: none; border-top: 1px dashed var(--border); padding-top: 10px; }
         .comment-item { font-size: 0.9em; padding: 8px 0; border-bottom: 1px solid var(--border); }
         .comment-item p { margin: 4px 0 0 0; }
-        .md-content img { max-width: 100%; } /* Markdown 图片适配 */
+        .md-content img { max-width: 100%; }
+        
+        .input-tabs { display: flex; gap: 10px; margin-bottom: 5px; border-bottom: 1px solid var(--border); }
+        .input-tabs .tab { padding: 5px 10px; cursor: pointer; font-size: 13px; color: var(--gray); }
+        .input-tabs .tab.active { color: var(--primary); border-bottom: 2px solid var(--primary); font-weight: bold; }
+        .toolbar { display: flex; gap: 2px; }
+        .toolbar button { padding: 2px 6px; font-size: 12px; background: #eee; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; }
+        .cmt-textarea { width: 100%; min-height: 80px; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; font-family: inherit; }
+        .cmt-preview-box { min-height: 80px; padding: 10px; background: #f9f9f9; border: 1px solid var(--border); border-radius: 4px; font-size: 0.9em; }
         
         /* 移动端 */
         @media (max-width: 768px) {
@@ -562,11 +570,25 @@
             
             <div class="comments-box" id="cmt-box-${q.id}">
                 <div id="cmt-list-${q.id}" style="margin-bottom:10px; max-height:200px; overflow-y:auto">加载中...</div>
-                <div style="display:flex; gap:5px">
-                    <input id="nick-${q.id}" placeholder="昵称" style="width:60px; padding:5px" value="${state.nick}">
-                    <textarea id="cmt-in-${q.id}" placeholder="支持 Markdown 格式..." style="flex:1; padding:5px; height:30px"></textarea>
-                    <button onclick="postCmt('${q.id}')" style="padding:0 10px">发布</button>
+                <div class="input-tabs">
+                    <span class="tab active" onclick="switchCommentTab('${q.id}', 'edit')">编辑</span>
+                    <span class="tab" onclick="switchCommentTab('${q.id}', 'preview')">预览</span>
                 </div>
+                <div id="cmt-edit-${q.id}" style="display:block">
+                    <div style="margin-bottom:5px; display:flex; gap:5px">
+                        <input id="nick-${q.id}" placeholder="昵称" style="width:80px; padding:5px; border:1px solid #ddd; border-radius:4px" value="${state.nick}">
+                        <div class="toolbar">
+                            <button onclick="insertMd('${q.id}', '**', '**')">B</button>
+                            <button onclick="insertMd('${q.id}', '*', '*')">I</button>
+                            <button onclick="insertMd('${q.id}', '\`', '\`')">Code</button>
+                        </div>
+                    </div>
+                    <textarea id="cmt-in-${q.id}" class="cmt-textarea" placeholder="支持 Markdown 格式..."></textarea>
+                    <div style="text-align:right; margin-top:5px">
+                        <button class="primary-btn" onclick="postCmt('${q.id}')">发布评论</button>
+                    </div>
+                </div>
+                <div id="cmt-preview-${q.id}" class="md-content cmt-preview-box" style="display:none"></div>
             </div>
         </div>`;
     }
@@ -724,11 +746,47 @@
         localStorage.setItem('qb_nick', nick);
         state.nick = nick;
         
-        await fetch(`${API}/comments`, {
-            method: 'POST', body: JSON.stringify({ nickname:nick, content, questionId:qid })
+        await fetch(`${API}/comments?qid=${qid}`, {
+            method: 'POST', body: JSON.stringify({ nickname:nick, content })
         });
         document.getElementById(`cmt-in-${qid}`).value = '';
         toggleComments(qid, true);
+    };
+
+    window.switchCommentTab = (qid, mode) => {
+        const editBox = document.getElementById(`cmt-edit-${qid}`);
+        const prevBox = document.getElementById(`cmt-preview-${qid}`);
+        const card = document.getElementById(`card-${qid}`);
+        const tabs = card.querySelectorAll('.input-tabs .tab');
+        
+        if(mode === 'edit') {
+            editBox.style.display = 'block';
+            prevBox.style.display = 'none';
+            tabs[0].classList.add('active');
+            tabs[1].classList.remove('active');
+        } else {
+            const content = document.getElementById(`cmt-in-${qid}`).value;
+            editBox.style.display = 'none';
+            prevBox.style.display = 'block';
+            prevBox.innerHTML = content ? marked.parse(content) : '<i style="color:#999">暂无内容</i>';
+            if(window.MathJax) MathJax.typesetPromise();
+            tabs[0].classList.remove('active');
+            tabs[1].classList.add('active');
+        }
+    };
+
+    window.insertMd = (qid, start, end) => {
+        const textarea = document.getElementById(`cmt-in-${qid}`);
+        const s = textarea.selectionStart;
+        const e = textarea.selectionEnd;
+        const val = textarea.value;
+        const before = val.substring(0, s);
+        const sel = val.substring(s, e);
+        const after = val.substring(e);
+        textarea.value = before + start + sel + end + after;
+        textarea.selectionStart = s + start.length;
+        textarea.selectionEnd = e + start.length;
+        textarea.focus();
     };
 
     window.toggleFav = async (qid, el) => {
