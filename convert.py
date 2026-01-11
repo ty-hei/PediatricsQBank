@@ -76,6 +76,7 @@ def convert_to_json(md_files):
         in_noun_exp = False
         in_case_analysis = False
         in_requirements = False # New state for Teaching Objectives
+        in_ref_answers = False # New state for Reference Answers
 
         # Group Context State
         group_info = {
@@ -113,6 +114,11 @@ def convert_to_json(md_files):
                         if group_info['type'] == 'options' and not q['options']:
                             # Copied list of options
                             q['options'] = [o.copy() for o in group_info['data']]
+                            # Assign Group ID for frontend rendering
+                            # Generate deterministic hash based on options content
+                            opt_str = json.dumps(group_info['data'], sort_keys=True)
+                            q['group_id'] = hashlib.md5(opt_str.encode('utf-8')).hexdigest()[:8]
+                            
                             if q['type'] == 'essay': q['type'] = 'single' # Assume single/multi if options exist
                         
                         # Apply Shared Stem
@@ -200,20 +206,35 @@ def convert_to_json(md_files):
                       match_cq = re_case_q_start.match(line)
                       # Check if it looks like a new question (and not validation text)
                       if match_cq and not line.startswith('答') and "答案" not in line[:5]: 
-                          if current_q:
-                             finalize_question(current_q)
-                             current_chapter["questions"].append(current_q)
+                          # FIX: Check if it's a valid next question (must be sequential)
+                          # If we have a current question, ensure the new one is greater.
+                          is_valid_new_q = True
+                          if current_q and current_q.get('seq'):
+                              try:
+                                  curr_seq = int(current_q['seq'])
+                                  new_seq = int(match_cq.group(1))
+                                  # If new sequence is not greater, it's likely a list item in the answer/analysis
+                                  if new_seq <= curr_seq:
+                                      is_valid_new_q = False
+                              except ValueError:
+                                  pass # If seq is not int, safely ignore and assume valid
                           
-                          current_q = {
-                              "id": "",
-                              "seq": match_cq.group(1),
-                              "title": match_cq.group(2),
-                              "options": [],
-                              "answer": "",
-                              "analysis": "",
-                              "type": "case" 
-                          }
-                          continue
+                          if is_valid_new_q:
+                               if current_q:
+                                  finalize_question(current_q)
+                                  current_chapter["questions"].append(current_q)
+                               
+                               current_q = {
+                                   "id": "",
+                                   "seq": match_cq.group(1),
+                                   "title": match_cq.group(2),
+                                   "options": [],
+                                   "answer": "",
+                                   "analysis": "",
+                                   "type": "case" 
+                               }
+                               continue
+
                       
                       # Append to Analysis or Title
                       if current_q:
@@ -256,6 +277,22 @@ def convert_to_json(md_files):
                         in_requirements = True
                         if "desc" not in current_chapter: current_chapter["desc"] = ""
                     
+                    # Check for Reference Answers (Q2 format)
+                    if "参考答案" in title:
+                        # CRITICAL FIX: Finalize pending question (e.g. Q6) BEFORE resetting group_info
+                        if current_q:
+                             # Ensure we use the current group_info before it gets killed
+                             current_q['seq'] = current_q.get('seq') or (re.match(r'^(\d+)', current_q['title']).group(1) if re.match(r'^(\d+)', current_q['title']) else None)
+                             finalize_question(current_q)
+                             current_chapter["questions"].append(current_q)
+                             current_q = None
+                        
+                        in_ref_answers = True
+                        in_case_analysis = False
+                        in_noun_exp = False
+                        in_requirements = False
+                        # We don't continue here because we want to reset group_info below
+                        
                     if title.startswith('【') or re.match(r'^[一二三四五六七八九十]+、', title):
                         group_info['active'] = False
                         group_info['data'] = []
@@ -266,6 +303,9 @@ def convert_to_json(md_files):
                 group_info['active'] = False
                 group_info['data'] = []
                 group_info['stem_text'] = ''
+                
+                # Turn off Answer Mode on new chapter
+                in_ref_answers = False
                 
                 # Logic to Merge Subtitle
                 if current_chapter and not current_chapter['questions']:
@@ -298,6 +338,29 @@ def convert_to_json(md_files):
                 current_chapter = {"title": title, "questions": [], "desc": ""}
                 all_chapters.append(current_chapter)
                 continue
+
+            # --- Reference Answers Mode ---
+            if in_ref_answers:
+                 if line.startswith('# '):
+                       # If we hit another header that isn't answers
+                       pass # Let normal header logic handle it (and unset in_ref_answers)
+                 else:
+                       # Parse Answer Lines: "1. C 2. D" or "1.C"
+                       # Use findall to catch multiple answers per line
+                       # Regex: (\d+)[\.．]\s*([A-Za-z]+)
+                       ans_matches = re.findall(r'(\d+)[\.．]\s*([A-Za-z]+)', line)
+                       if ans_matches:
+                           for seq, ans in ans_matches:
+                                # Find question in current chapter with this seq
+                                found_q = False
+                                for q in current_chapter['questions']:
+                                     if str(q['seq']) == str(seq): # Ensure string comparison
+                                          q['answer'] = ans
+                                          if len(ans) > 1: q['type'] = 'multi'
+                                          found_q = True
+                                          break
+                       continue
+            # ------------------------------
 
             # 2. 题目
             match_q = re_question_start.match(line)
@@ -344,7 +407,9 @@ def convert_to_json(md_files):
                       opt = {"label": label, "text": text.strip()}
                       if current_q:
                            current_q["options"].append(opt)
-                      elif group_info['active'] and group_info['type'] == 'options':
+                      
+                      # ALWAYS append to group_info if active (Fix for shared options)
+                      if group_info['active'] and group_info['type'] == 'options':
                            group_info['data'].append(opt)
                  continue
 
@@ -740,6 +805,15 @@ def get_html_template(json_data):
         .option.wrong {{ background: rgba(231, 76, 60, 0.15); border-color: var(--danger); color: #721c24; }}
         
         /* 解析与数据 */
+        .group-options-box {{ background: var(--bg); padding: 10px; border-radius: 6px; margin-bottom: 10px; border: 1px dashed var(--gray); font-size: 0.9em; }}
+        .group-option-item {{ margin-bottom: 4px; }}
+        .simple-options-container {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 5px; }}
+        .simple-option-btn {{ width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 50%; cursor: pointer; font-weight: bold; background: var(--card); }}
+        .simple-option-btn:hover {{ background: rgba(0,0,0,0.05); }}
+        .simple-option-btn.selected {{ border-color: var(--primary); background: var(--primary); color: white; }}
+        .simple-option-btn.correct {{ border-color: var(--success); background: var(--success); color: white; }}
+        .simple-option-btn.wrong {{ border-color: var(--danger); background: var(--danger); color: white; }}
+
         .analysis-box {{ margin-top: 15px; padding: 15px; background: var(--bg); border-radius: 6px; display: none; }}
         .analysis-box.show {{ display: block; }}
         .stat-btn {{ color: var(--primary); cursor: pointer; text-decoration: underline; font-size: 0.9em; margin-left: 10px; }}
@@ -1117,7 +1191,12 @@ def get_html_template(json_data):
             const isWrong = state.records[q.id]?.status === 'wrong';
             if (state.onlyWrong && !isWrong) return false;
             return q.title.toLowerCase().includes(kw) || q.id.includes(kw);
-        }}).map(q => buildCard(q)).join('');
+        }}).map((q, i, arr) => {{
+             // Check if group start
+             const prev = arr[i-1];
+             const isGroupStart = q.group_id && (!prev || prev.group_id !== q.group_id);
+             return buildCard(q, isGroupStart);
+        }}).join('');
         
         document.getElementById('content').innerHTML = chartHtml + descHtml + (listHtml || '<div style="text-align:center; padding:20px; color:var(--gray)">没有找到题目</div>');
         
@@ -1132,20 +1211,41 @@ def get_html_template(json_data):
         }}
     }}
 
-    function buildCard(q) {{
+    function buildCard(q, isGroupStart = false) {{
         const isFav = state.favs.includes(q.id);
         const stat = state.stats[q.id] || {{ fav:0, rate:0, total:0 }};
         
+        // Group Header (Shared Options)
+        let groupHeader = '';
+        if (isGroupStart && q.group_id) {{
+             const optsHtml = q.options.map(o => 
+                 `<div class="group-option-item"><b>${{o.label}}.</b> ${{o.text}}</div>`
+             ).join('');
+             groupHeader = `<div class="group-options-box">${{optsHtml}}</div>`;
+        }}
+
         let contentHtml = '';
+        let optionsHtml = '';
+
         if (q.type === 'essay' || q.type === 'mix' || q.type === 'case') {{
-             contentHtml = `<button onclick="toggleAnalysis('${{q.id}}')" style="padding:8px 15px; background:var(--primary); color:#fff; border:none; border-radius:4px; cursor:pointer">查看答案</button>`;
+             optionsHtml = `<button onclick="toggleAnalysis('${{q.id}}')" style="padding:8px 15px; background:var(--primary); color:#fff; border:none; border-radius:4px; cursor:pointer">查看答案</button>`;
         }} else {{
-             contentHtml = q.options.map(o => 
-                `<div class="option" id="opt-${{q.id}}-${{o.label}}" onclick="clickOpt('${{q.id}}', '${{o.label}}', '${{q.type}}')">
-                    <b style="width:25px">${{o.label}}.</b> 
-                    <span>${{o.text}}</span>
-                 </div>`
-            ).join('');
+             // If grouped, show simplified buttons
+             if (q.group_id) {{
+                  optionsHtml = `<div class="simple-options-container">` + 
+                      q.options.map(o => 
+                        `<div class="simple-option-btn" id="opt-${{q.id}}-${{o.label}}" onclick="clickOpt('${{q.id}}', '${{o.label}}', '${{q.type}}')">${{o.label}}</div>`
+                      ).join('') + 
+                  `</div>`;
+             }} else {{
+                  // Normal Display
+                  optionsHtml = q.options.map(o => 
+                    `<div class="option" id="opt-${{q.id}}-${{o.label}}" onclick="clickOpt('${{q.id}}', '${{o.label}}', '${{q.type}}')">
+                        <b style="width:25px">${{o.label}}.</b> 
+                        <span>${{o.text}}</span>
+                     </div>`
+                ).join('');
+             }}
         }}
 
         const submitBtn = q.type === 'multi' ? `<button onclick="checkAnswer('${{q.id}}')" style="margin-top:10px; padding:5px 15px; background:var(--primary); color:#fff; border:none; border-radius:4px">提交</button>` : '';
@@ -1162,11 +1262,12 @@ def get_html_template(json_data):
         return `
         <div class="card" id="card-${{q.id}}">
             <div style="font-size:12px; color:var(--gray); margin-bottom:5px">ID: ${{q.id}} · ${{typeLabel}}</div>
+            ${{groupHeader}}
             <div class="q-title">
                 ${{seqBadge}} 
                 ${{marked.parse(q.title)}}
             </div>
-            <div>${{contentHtml}}</div>
+            <div>${{optionsHtml}}</div>
             ${{submitBtn}}
             
             <div class="analysis-box" id="analysis-${{q.id}}">
@@ -1212,7 +1313,7 @@ def get_html_template(json_data):
             else ans.push(label);
             state.records[qid] = {{ ans, checked: false }};
             // 渲染选中态
-            document.querySelectorAll(`#card-${{qid}} .option`).forEach(el => {{
+            document.querySelectorAll(`#card-${{qid}} .option, #card-${{qid}} .simple-option-btn`).forEach(el => {{
                 el.classList.remove('selected');
                 const l = el.id.split('-').pop();
                 if (ans.includes(l)) el.classList.add('selected');
@@ -1242,8 +1343,11 @@ def get_html_template(json_data):
         // 样式更新
         const card = document.getElementById(`card-${{qid}}`);
         if(card) {{
-            card.querySelectorAll('.option').forEach(el => {{
+            card.querySelectorAll('.option, .simple-option-btn').forEach(el => {{
                 el.classList.remove('selected');
+                // Remove old status classes just in case
+                el.classList.remove('correct');
+                el.classList.remove('wrong');
                 const l = el.id.split('-').pop();
                 if (q.answer.includes(l)) el.classList.add('correct');
                 else if (myAns.includes(l)) el.classList.add('wrong');
