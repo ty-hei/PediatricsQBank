@@ -21,7 +21,13 @@ export async function onRequest(context) {
         // 1. 注册 (POST)
         // -------------------------------------------------------------
         if (action === "register" && request.method === "POST") {
-            const { username, password } = await request.json();
+            const { username, password, inviteCode } = await request.json();
+
+            // Invite Code Verification
+            if (inviteCode !== "0731") {
+                return Response.json({ error: "邀请码错误，请联系管理员获取" }, { status: 403, headers: corsHeaders });
+            }
+
             if (!username || !password || username.length < 3 || password.length < 6) {
                 return Response.json({ error: "用户名至少3位，密码至少6位" }, { status: 400, headers: corsHeaders });
             }

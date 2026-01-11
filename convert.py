@@ -9,6 +9,7 @@ INPUT_FILES = ['Q1.md', 'Q2.md']
 OUTPUT_DIR = 'dist'
 OUTPUT_HTML = 'index.html'
 DOMAIN = "https://PediatricsQBank.heihaheihaha.com"
+# DOMAIN = "" # Use relative path for API calls
 # =========================================
 
 def generate_hash_id(text):
@@ -954,22 +955,30 @@ def get_html_template(json_data):
         document.getElementById('auth-title').innerText = isRegister ? '注册新账号' : '登录';
         const link = document.querySelector('#auth-form a');
         link.innerText = isRegister ? '已有账号？去登录' : '没有账号？去注册';
+        // Show/Hide Invite Code
+        document.getElementById('invite-group').style.display = isRegister ? 'block' : 'none';
     }}
 
     async function doAuth() {{
         const name = document.getElementById('u-name').value;
         const pass = document.getElementById('u-pass').value;
+        const code = document.getElementById('u-code').value; // Get Invite Code
+        
         if (!name || !pass) return alert('请输入完整');
+        if (isRegister && !code) return alert('请输入邀请码');
 
         const action = isRegister ? 'register' : 'login';
         const btn = document.querySelector('#auth-form button');
         btn.innerText = '处理中...'; btn.disabled = true;
 
         try {{
+            const payload = {{ username: name, password: pass }};
+            if (isRegister) payload.inviteCode = code; // Send Invite Code
+
             const res = await fetch(`${{API}}/user?action=${{action}}`, {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
-                body: JSON.stringify({{ username: name, password: pass }})
+                body: JSON.stringify(payload)
             }});
             const data = await res.json();
             
