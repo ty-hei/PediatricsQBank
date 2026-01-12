@@ -39,7 +39,7 @@ export async function onRequest(context) {
             const { nickname, content } = data;
 
             // 1. 安全检查 & 简单清洗 (HTML 转义)
-            if (!content || content.length > 200) return new Response("Content too long or empty", { status: 400, headers: corsHeaders });
+            if (!content || content.length > 5000) return new Response("Content too long (max 5000) or empty", { status: 400, headers: corsHeaders });
             if (!nickname || nickname.length > 20) return new Response("Nickname too long", { status: 400, headers: corsHeaders });
 
             const safeContent = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
