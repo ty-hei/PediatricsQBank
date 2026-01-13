@@ -417,10 +417,19 @@
         const ids = data.chapters[idx].questions.map(q => q.id);
         fetch(API + '/batch-info', {
             method: 'POST', body: JSON.stringify({ ids })
-        }).then(r=>r.json()).then(res => {
-            state.stats = { ...state.stats, ...res };
-            updateStatsUI(ids); 
-        });
+        }).then(async r => {
+            if (!r.ok) {
+                const err = await r.text();
+                console.error("Batch Info Error:", r.status, err);
+                return;
+            }
+            return r.json();
+        }).then(res => {
+            if(res) {
+                state.stats = { ...state.stats, ...res };
+                updateStatsUI(ids); 
+            }
+        }).catch(e => console.error("Network Error:", e));
     }
 
     function renderList() {
