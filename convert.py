@@ -1469,6 +1469,13 @@ def get_html_template(json_data):
         // 加载评论
         const res = await fetch(`${{API}}/comments?qid=${{qid}}`);
         const list = await res.json();
+        
+        if (!res.ok) {{
+            alert("加载评论失败: " + (list.error || "未知错误"));
+            document.getElementById(`cmt-list-${{qid}}`).innerHTML = '<div style="color:red; padding:10px">加载失败</div>';
+            return;
+        }}
+
         // Check current user
         const currUser = localStorage.getItem('qb_username');
         
@@ -1547,23 +1554,29 @@ def get_html_template(json_data):
         const btn = document.querySelector(`#cmt-edit-${{qid}} .primary-btn`);
         const mode = btn.dataset.mode || 'create';
         
-        if (mode === 'update') {{
-            const cid = btn.dataset.cid;
-            await fetch(`${{API}}/comments`, {{
-                method: 'PUT',
-                headers: headers,
-                body: JSON.stringify({{ commentId: cid, content }})
-            }});
-            window.cancelEdit(qid); // Reset UI
-        }} else {{
-            await fetch(`${{API}}/comments?qid=${{qid}}`, {{
-                method: 'POST', 
-                headers: headers,
-                body: JSON.stringify({{ nickname:nick, content }})
-            }});
-        }}
-        document.getElementById(`cmt-in-${{qid}}`).value = '';
-        toggleComments(qid, true);
+            if (mode === 'update') {{
+                const cid = btn.dataset.cid;
+                res = await fetch(`${{API}}/comments`, {{
+                    method: 'PUT',
+                    headers: headers,
+                    body: JSON.stringify({{ commentId: cid, content }})
+                }});
+                if(res.ok) window.cancelEdit(qid); 
+            }} else {{
+                res = await fetch(`${{API}}/comments?qid=${{qid}}`, {{
+                    method: 'POST', 
+                    headers: headers,
+                    body: JSON.stringify({{ nickname:nick, content }})
+                }});
+            }}
+            
+            const data = await res.json();
+            if(!res.ok) {{
+                alert("操作失败: " + (data.error || "未知错误"));
+            }} else {{
+                document.getElementById(`cmt-in-${{qid}}`).value = '';
+                toggleComments(qid, true);
+            }}
     }};
 
     window.switchCommentTab = (qid, mode) => {{

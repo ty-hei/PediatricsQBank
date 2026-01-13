@@ -13,11 +13,19 @@ export async function onRequest(context) {
         return new Response(null, { headers: corsHeaders });
     }
 
+    const url = new URL(request.url);
+    const questionId = url.searchParams.get("qid");
+
     // 统一 Auth 逻辑
     const authHeader = request.headers.get("Authorization");
     const token = authHeader ? authHeader.replace("Bearer ", "") : null;
     let userId = null;
     let username = null;
+
+    // Validate QID for GET/POST (PUT uses body)
+    if (!questionId && (request.method === "GET" || request.method === "POST")) {
+        return new Response("Missing question ID", { status: 400, headers: corsHeaders });
+    }
 
     if (token) {
         const session = await db.prepare(
