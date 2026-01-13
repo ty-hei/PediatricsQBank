@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS comments (
     nickname TEXT NOT NULL,
     content TEXT NOT NULL,
     ip_hash TEXT,
-    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    user_id INTEGER,
+    updated_at INTEGER,
+    FOREIGN KEY(user_id) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_comments_qid ON comments(question_id);
 

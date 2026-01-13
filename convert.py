@@ -1469,14 +1469,67 @@ def get_html_template(json_data):
         // 加载评论
         const res = await fetch(`${{API}}/comments?qid=${{qid}}`);
         const list = await res.json();
-        const html = list.map(c => `
-            <div class="comment-item">
-                <div><b style="color:var(--primary)">${{c.nickname}}</b> <span style="font-size:0.8em; color:#aaa">${{new Date(c.created_at*1000).toLocaleDateString()}}</span></div>
-                <div class="md-content">${{marked.parse(c.content)}}</div>
-            </div>`
+        // Check current user
+        const currUser = localStorage.getItem('qb_username');
+        
+        const html = list.map(c => {{
+            const isMine = currUser && (c.nickname === currUser); // Simple check
+            const editBtn = isMine ? `<span style="color:blue; cursor:pointer; margin-left:10px; font-size:0.8em" onclick="editCmt('${{qid}}', ${{c.id}}, this)">[编辑]</span>` : '';
+            
+            return `
+            <div class="comment-item" id="cmt-item-${{c.id}}">
+                <div>
+                    <b style="color:var(--primary)">${{c.nickname}}</b> 
+                    <span style="font-size:0.8em; color:#aaa">${{new Date(c.created_at*1000).toLocaleDateString()}}</span>
+                    ${{editBtn}}
+                </div>
+                <div class="md-content" id="cmt-content-${{c.id}}">${{marked.parse(c.content)}}</div>
+                <div style="display:none" id="cmt-raw-${{c.id}}">${{c.content}}</div>
+            </div>`;
+        }}
         ).join('') || '<div style="padding:10px; text-align:center">暂无评论</div>';
+        
         document.getElementById(`cmt-list-${{qid}}`).innerHTML = html;
         if (window.MathJax) MathJax.typesetPromise();
+    }};
+
+    window.editCmt = (qid, cid, btn) => {{
+        const raw = document.getElementById(`cmt-raw-${{cid}}`).innerText;
+        document.getElementById(`cmt-in-${{qid}}`).value = raw;
+        
+        // Switch to edit mode UI
+        const postBtn = document.querySelector(`#cmt-edit-${{qid}} .primary-btn`);
+        postBtn.innerText = "更新评论";
+        postBtn.dataset.mode = "update";
+        postBtn.dataset.cid = cid;
+        
+        // Add cancel button if not exists
+        let cancelBtn = document.getElementById(`cmt-cancel-${{qid}}`);
+        if(!cancelBtn) {{
+            cancelBtn = document.createElement('button');
+            cancelBtn.id = `cmt-cancel-${{qid}}`;
+            cancelBtn.innerText = "取消";
+            cancelBtn.style.marginLeft = "10px";
+            cancelBtn.style.background = "#eee";
+            cancelBtn.onclick = () => window.cancelEdit(qid);
+            postBtn.parentNode.appendChild(cancelBtn);
+        }}
+        cancelBtn.style.display = 'inline-block';
+        
+        // Scroll to input
+        document.getElementById(`cmt-edit-${{qid}}`).scrollIntoView({{behavior:'smooth'}});
+    }};
+
+    window.cancelEdit = (qid) => {{
+        const postBtn = document.querySelector(`#cmt-edit-${{qid}} .primary-btn`);
+        postBtn.innerText = "发布评论";
+        postBtn.dataset.mode = "create";
+        delete postBtn.dataset.cid;
+        
+        const cancelBtn = document.getElementById(`cmt-cancel-${{qid}}`);
+        if(cancelBtn) cancelBtn.style.display = 'none';
+        
+        document.getElementById(`cmt-in-${{qid}}`).value = '';
     }};
 
     window.postCmt = async (qid) => {{
@@ -1487,9 +1540,28 @@ def get_html_template(json_data):
         localStorage.setItem('qb_nick', nick);
         state.nick = nick;
         
-        await fetch(`${{API}}/comments?qid=${{qid}}`, {{
-            method: 'POST', body: JSON.stringify({{ nickname:nick, content }})
-        }});
+        const token = localStorage.getItem('qb_token');
+        const headers = {{ 'Content-Type': 'application/json' }};
+        if(token) headers['Authorization'] = 'Bearer ' + token;
+
+        const btn = document.querySelector(`#cmt-edit-${{qid}} .primary-btn`);
+        const mode = btn.dataset.mode || 'create';
+        
+        if (mode === 'update') {{
+            const cid = btn.dataset.cid;
+            await fetch(`${{API}}/comments`, {{
+                method: 'PUT',
+                headers: headers,
+                body: JSON.stringify({{ commentId: cid, content }})
+            }});
+            window.cancelEdit(qid); // Reset UI
+        }} else {{
+            await fetch(`${{API}}/comments?qid=${{qid}}`, {{
+                method: 'POST', 
+                headers: headers,
+                body: JSON.stringify({{ nickname:nick, content }})
+            }});
+        }}
         document.getElementById(`cmt-in-${{qid}}`).value = '';
         toggleComments(qid, true);
     }};
