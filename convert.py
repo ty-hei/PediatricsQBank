@@ -1478,9 +1478,11 @@ def get_html_template(json_data):
 
         // Check current user
         const currUser = localStorage.getItem('qb_username');
+        console.log("Current User:", currUser);
         
         const html = list.map(c => {{
-            const isMine = currUser && (c.nickname === currUser); // Simple check
+            const isMine = currUser && (c.nickname === currUser); 
+            if(c.nickname === currUser && !isMine) console.warn("Mismatch type/value?", c.nickname, currUser);
             const editBtn = isMine ? `<span style="color:blue; cursor:pointer; margin-left:10px; font-size:0.8em" onclick="editCmt('${{qid}}', ${{c.id}}, this)">[编辑]</span>` : '';
             
             return `

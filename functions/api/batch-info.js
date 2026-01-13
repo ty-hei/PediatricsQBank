@@ -36,7 +36,7 @@ export async function onRequestPost(context) {
         return Response.json(map, { headers: corsHeaders });
 
     } catch (e) {
-        return Response.json({ error: e.message }, { status: 500, headers: corsHeaders });
+        return Response.json({ error: e.message, stack: e.stack }, { status: 500, headers: corsHeaders });
     }
 }
 
