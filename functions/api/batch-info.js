@@ -13,15 +13,25 @@ export async function onRequestPost(context) {
             return Response.json({}, { headers: corsHeaders });
         }
 
-        // Build SQL IN clause
-        const placeholders = ids.map(() => '?').join(',');
-        const query = `SELECT question_id, correct_count, total_count, fav_count FROM question_stats WHERE question_id IN (${placeholders})`;
+        // Chunking to avoid "too many SQL variables"
+        const CHUNK_SIZE = 50;
+        const allResults = [];
 
-        const { results } = await db.prepare(query).bind(...ids).all();
+        for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+            const chunk = ids.slice(i, i + CHUNK_SIZE);
+            if (chunk.length === 0) continue;
+
+            const placeholders = chunk.map(() => '?').join(',');
+            const query = `SELECT question_id, correct_count, total_count, fav_count FROM question_stats WHERE question_id IN (${placeholders})`;
+
+            // Execute chunk
+            const { results } = await db.prepare(query).bind(...chunk).all();
+            if (results) allResults.push(...results);
+        }
 
         // Transform to Map: { "hash1": { rate: 50, total: 10, fav: 1 } }
         const map = {};
-        results.forEach(r => {
+        allResults.forEach(r => {
             let rate = 0;
             if (r.total_count > 0) {
                 rate = Math.round((r.correct_count / r.total_count) * 100);
