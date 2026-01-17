@@ -872,6 +872,7 @@ def get_html_template(json_data):
         <button onclick="toggleSidebar()" style="background:none; border:1px solid var(--border); padding:5px 10px; border-radius:4px; color:var(--text)">☰</button>
         <input class="search-input" id="search" placeholder="搜索题目..." oninput="filterQ()">
         <button onclick="toggleWrong()" id="btnWrong" style="background:none; border:1px solid var(--border); padding:5px; border-radius:4px; color:var(--text)">只看错题</button>
+        <button onclick="toggleFavFilter()" id="btnFavFilter" style="background:none; border:1px solid var(--border); padding:5px; border-radius:4px; color:var(--text); margin-left:5px">只看收藏</button>
         <button onclick="resetProgress()" style="background:none; border:1px solid var(--border); padding:5px; border-radius:4px; color:var(--text); margin-left:5px" title="重置本章进度">↺</button>
         <div style="flex:1"></div> 
         <div id="user-area" class="user-info" onclick="showUserModal()">
@@ -925,6 +926,7 @@ def get_html_template(json_data):
         bookIdx: 0,
         chapIdx: 0,
         onlyWrong: false,
+        onlyFav: false,
         records: JSON.parse(localStorage.getItem('qb_records') || '{{}}'), 
         favs: JSON.parse(localStorage.getItem('qb_favs') || '[]'),
         stats: {{}}, 
@@ -1220,6 +1222,10 @@ def get_html_template(json_data):
         const listHtml = qs.filter(q => {{
             const isWrong = state.records[q.id]?.status === 'wrong';
             if (state.onlyWrong && !isWrong) return false;
+            
+            const isFav = state.favs.includes(q.id);
+            if (state.onlyFav && !isFav) return false;
+            
             return q.title.toLowerCase().includes(kw) || q.id.includes(kw);
         }}).map((q, i, arr) => {{
              // Check if group start
@@ -1646,6 +1652,13 @@ def get_html_template(json_data):
         state.onlyWrong = !state.onlyWrong;
         document.getElementById('btnWrong').style.background = state.onlyWrong ? 'var(--primary)' : 'none';
         document.getElementById('btnWrong').style.color = state.onlyWrong ? '#fff' : 'var(--text)';
+        renderList();
+    }};
+
+    window.toggleFavFilter = () => {{
+        state.onlyFav = !state.onlyFav;
+        document.getElementById('btnFavFilter').style.background = state.onlyFav ? 'var(--primary)' : 'none';
+        document.getElementById('btnFavFilter').style.color = state.onlyFav ? '#fff' : 'var(--text)';
         renderList();
     }};
 
