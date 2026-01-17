@@ -9,12 +9,16 @@ export async function onRequestPost(context) {
 
     try {
         const { ids } = await request.json(); // ids: ['hash1', 'hash2']
+        // Check for ids
         if (!ids || !Array.isArray(ids) || ids.length === 0) {
             return Response.json({}, { headers: corsHeaders });
         }
 
+        console.log(`[BatchInfo] Received ${ids.length} ids`);
+
         // Chunking to avoid "too many SQL variables"
-        const CHUNK_SIZE = 50;
+        // D1 might have a lower limit or specific constraints, reducing to 10 to be safe
+        const CHUNK_SIZE = 10;
         const allResults = [];
 
         for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
