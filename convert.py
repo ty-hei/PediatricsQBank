@@ -582,6 +582,7 @@ def parse_q2_markdown(file_path):
             if match_stem:
                 current_shared_range = (int(match_stem.group(1)), int(match_stem.group(2)))
                 current_shared_stem = match_stem.group(3)
+                print(f"DEBUG: Found Stem {current_shared_range}: {current_shared_stem[:20]}...")
                 continue
 
             # 题目开始
@@ -594,6 +595,9 @@ def parse_q2_markdown(file_path):
                     current_chap["questions"].append(current_q)
                 
                 seq_num = int(match_q.group(1))
+                if seq_num in [30, 32]:
+                    print(f"DEBUG: Processing Q{seq_num}. Range: {current_shared_range}")
+                
                 current_q = {
                     "id": "",
                     "seq": seq_num, 
