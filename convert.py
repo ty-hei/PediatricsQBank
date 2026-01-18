@@ -520,6 +520,11 @@ def parse_q2_markdown(file_path):
     
     # 答案行匹配: "1.A 2.B" 或 "1. A"
     re_ans_line = re.compile(r'(\d+)\s*[\.、]?\s*([A-E]+)')
+    
+    # Shared Stem (A3/A4)
+    re_shared_stem = re.compile(r'^(\d+)[～~-](\d+)题干[:：]\s*(.*)')
+    current_shared_stem = ""
+    current_shared_range = (0, 0)
 
     current_q = None
 
@@ -572,6 +577,13 @@ def parse_q2_markdown(file_path):
             if line.startswith('#') or line.startswith('【'): 
                 continue
 
+            # Check for Shared Stem Line
+            match_stem = re_shared_stem.match(line)
+            if match_stem:
+                current_shared_range = (int(match_stem.group(1)), int(match_stem.group(2)))
+                current_shared_stem = match_stem.group(3)
+                continue
+
             # 题目开始
             match_q = re_q_start.match(line)
             if match_q:
@@ -581,14 +593,16 @@ def parse_q2_markdown(file_path):
                     current_q['id'] = generate_hash_id(full_content)
                     current_chap["questions"].append(current_q)
                 
+                seq_num = int(match_q.group(1))
                 current_q = {
                     "id": "",
-                    "seq": int(match_q.group(1)), # 暂存序号用于对答案
-                    "title": match_q.group(2),
+                    "seq": seq_num, 
+                    # Prepend shared stem if in range
+                    "title": (f"【题干】{current_shared_stem}<br> " + match_q.group(2)) if (current_shared_range[0] <= seq_num <= current_shared_range[1]) else match_q.group(2),
                     "options": [],
                     "answer": "",
-                    "analysis": "", # Q2 似乎没解析，只有答案
-                    "type": "single"
+                    "analysis": "",
+                    "type": "case" if (current_shared_range[0] <= seq_num <= current_shared_range[1]) else "single"
                 }
                 continue
 
